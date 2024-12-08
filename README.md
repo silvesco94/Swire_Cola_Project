@@ -79,9 +79,7 @@ The predictive maintenance solution developed for Swire Coca-Cola directly addre
 
 With this solution, Swire Coca-Cola can achieve reliable, efficient, and scalable production processes, ensuring long-term business growth and operational stability.
 
-## Difficulties that your group encountered along the way.
-
-## Challenges and Difficulties Faced
+## [Difficulties that our group encountered along the way.](Exploratory%20Data%20Analysis%20Group%204-2%20(1).html)
 
 During the analysis and modeling process, several challenges were encountered that significantly influenced the outcome of the project:
 
@@ -102,4 +100,24 @@ During the analysis and modeling process, several challenges were encountered th
    - Temporal trends revealed seasonal spikes and dips in breakdown counts, adding complexity to the feature engineering process as the model needed to capture these nuances.
 
 These challenges highlight the importance of data quality and completeness in predictive modeling projects. Addressing these issues through rigorous preprocessing and thoughtful feature engineering was essential to derive actionable insights despite the limitations.
+
+## What I learned in the project.
+
+This project provided a valuable learning experience in applying data science to real-world business challenges. Key takeaways include:
+
+1. **Dealing with Messy Real-Life Data**:
+   - I gained firsthand experience handling incomplete and inconsistent datasets, such as missing equipment IDs and poorly formatted date fields. This taught me the importance of thorough data cleaning and preprocessing to ensure meaningful modeling results.
+
+2. **Learning Survival Analysis**:
+   - I learned how to format and run survival analysis models, understanding their application in predicting events over time. This included selecting appropriate features, interpreting survival curves, and communicating the results effectively.
+
+3. **Aligning Research with Business Problems**:
+   - I developed the skill to frame research questions and analytical approaches to fit within a defined business problem. This involved ensuring that the technical methods aligned with Swire Coca-Cola's goals of reducing downtime and operational costs.
+
+4. **Balancing Technical and Stakeholder Needs**:
+   - I learned how to balance technical depth with stakeholder concerns, ensuring that the insights derived from the analysis were actionable and aligned with business priorities.
+
+This project reinforced the importance of combining technical expertise with business understanding to create impactful data-driven solutions.
+
+
 
