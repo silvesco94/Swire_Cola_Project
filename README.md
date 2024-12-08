@@ -60,6 +60,46 @@ In this project, I developed a **Random Forest-based predictive maintenance mode
 
 These contributions ensured a data-driven approach to predictive maintenance, enabling Swire Coca-Cola to proactively address equipment failures, reduce costs, and improve production efficiency.
 
+##  [Business Value of Solution](Swire%20Coca-Cola%20Capstone%20(1).pptx).
 
 
+The predictive maintenance solution developed for Swire Coca-Cola directly addresses the $60M annual loss caused by unexpected machine downtime. By leveraging survival analysis and machine learning models, this solution provides:
+
+1. **Improved Maintenance Planning**:
+   - Proactively identifies high-risk equipment likely to fail, enabling preemptive repairs.
+   - Reduces unplanned failures, minimizing disruptions to production schedules.
+
+2. **Enhanced Operational Efficiency**:
+   - Maximizes output by keeping machines running reliably with minimal delays.
+   - Supports scalable maintenance strategies adaptable to future production needs.
+
+3. **Cost Savings**:
+   - Reduces downtime-related costs by optimizing maintenance schedules.
+   - Helps meet production deadlines, maintaining customer satisfaction and revenue targets.
+
+With this solution, Swire Coca-Cola can achieve reliable, efficient, and scalable production processes, ensuring long-term business growth and operational stability.
+
+## Difficulties that your group encountered along the way.
+
+## Challenges and Difficulties Faced
+
+During the analysis and modeling process, several challenges were encountered that significantly influenced the outcome of the project:
+
+1. **High Percentage of Missing Equipment IDs**:
+   - Over 80% of the equipment ID data was missing, which posed a significant obstacle to granular analysis at the equipment level.
+   - This missing data restricted the model's ability to distinguish failure patterns or breakdown frequencies tied to specific machines, potentially impacting the model's precision.
+
+2. **Imbalance in Breakdown Records**:
+   - The distribution of breakdown counts was uneven, with some functional areas experiencing significantly higher breakdowns than others.
+   - This imbalance could lead to the model overemphasizing high-frequency breakdown areas while underperforming for lower-frequency areas.
+
+3. **Data Quality Issues in Date Columns**:
+   - Inconsistencies in execution start and finish dates required extensive preprocessing, including handling missing values and reformatting dates.
+   - These issues complicated the feature engineering process, particularly for time-based variables like repair durations and quarterly trends.
+
+4. **Exploratory Analysis Observations**:
+   - Certain functional areas consistently exhibited high breakdown counts, such as SUZUKA PRODUCTION, while others like COTA PRODUCTION were more stable.
+   - Temporal trends revealed seasonal spikes and dips in breakdown counts, adding complexity to the feature engineering process as the model needed to capture these nuances.
+
+These challenges highlight the importance of data quality and completeness in predictive modeling projects. Addressing these issues through rigorous preprocessing and thoughtful feature engineering was essential to derive actionable insights despite the limitations.
 
