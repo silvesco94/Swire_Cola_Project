@@ -34,6 +34,32 @@ OOur group developed a comprehensive predictive maintenance solution for Swire C
 These approaches worked synergistically to empower Swire Coca-Cola with data-driven strategies to anticipate equipment failures, reduce downtime, optimize maintenance schedules, and enhance overall production efficiency. The solution is projected to significantly reduce operational costs and improve productivity by addressing the root causes of unplanned downtimes.
 
 
-## My Contribution to the Project 
+## [My Personal Contribution](modeling%20assignment.Rmd)
+
+In this project, I developed a **Random Forest-based predictive maintenance model** to assist Swire Coca-Cola in minimizing equipment downtime. My contributions focused on key aspects of data preprocessing, feature engineering, visualization, and model evaluation:
+
+1. **Data Cleaning and Preprocessing**:
+   - Transformed and cleaned historical maintenance data, including date conversions and handling missing values.
+   - Aggregated breakdown counts and maintenance records by year and quarter to provide structured temporal insights.
+
+2. **Feature Engineering**:
+   - Created lagged features, moving averages, and cumulative breakdown totals to capture recent and historical trends.
+   - Engineered interaction terms and polynomial features to improve predictive power.
+
+3. **Exploratory Analysis and Visualizations**:
+   - Developed visualizations to uncover quarterly breakdown patterns, repair durations, and trends across functional areas.
+   - Created heatmaps and line plots to highlight critical insights for operational planning.
+
+4. **Model Development and Evaluation**:
+   - Trained and optimized a Random Forest regression model, achieving high predictive accuracy with 98% of variance explained.
+   - Conducted thorough performance evaluations using metrics like MAE, RMSE, and R², interpreting their implications for business operations.
+   - Analyzed feature importance to identify key drivers of breakdowns, guiding maintenance prioritization.
+
+5. **Advanced Modeling**:
+   - Experimented with advanced feature transformations, including log-transformed targets and interaction terms, to enhance the model's robustness.
+
+These contributions ensured a data-driven approach to predictive maintenance, enabling Swire Coca-Cola to proactively address equipment failures, reduce costs, and improve production efficiency.
+
+
 
 
