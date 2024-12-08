@@ -1,0 +1,725 @@
+---
+title: "Seasonal Random Forest"
+author: "Scott Silverstein"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+# Introduction 
+
+The Random Forest model for predictive maintenance is designed to help Swire Coca-Cola proactively manage equipment downtime by predicting the likelihood of machine breakdowns on a quarterly basis. By analyzing historical data, including maintenance records, time intervals between breakdowns, and operational factors such as equipment age and maintenance types, the model identifies patterns that can forecast future breakdowns with high accuracy.
+
+This model’s primary objective is to enable more effective resource allocation by pinpointing high-risk quarters. With this quarterly breakdown insight, Swire Coca-Cola can preemptively schedule maintenance, stock essential spare parts, and optimize budget allocations to minimize unplanned downtimes. Ultimately, this predictive approach aims to reduce operational costs, improve production continuity, and ensure timely delivery to meet customer demand.
+
+## Packages 
+
+
+```{r, message=FALSE, warning=FALSE}
+install.packages("htmltools")
+library(htmltools)
+library(tidyverse)
+library(lubridate)
+library(zoo)
+library(randomForest)
+library(caret)  
+library(knitr)
+library(kableExtra)
+```
+
+
+## Data 
+
+```{r}
+data = read.csv("IWC_Work_Orders_Extract.csv")
+```
+
+
+# Execution Start and end date information 
+
+```{r}
+str(data$EXECUTION_START_DATE)
+str(data$EXECUTION_FINISH_DATE)
+summary(data$EXECUTION_START_DATE)
+summary(data$EXECUTION_FINISH_DATE)
+
+non_missing_start <- sum(!is.na(data$EXECUTION_START_DATE)) / nrow(data) * 100
+non_missing_finish <- sum(!is.na(data$EXECUTION_FINISH_DATE)) / nrow(data) * 100
+cat("Non-missing EXECUTION_START_DATE:", non_missing_start, "%\n")
+cat("Non-missing EXECUTION_FINISH_DATE:", non_missing_finish, "%\n")
+
+```
+
+# Feature Engineering 
+
+##  Convert Date Columns and Extract Year and Quarter
+
+```{r}
+# Convert character dates to Date format
+data$EXECUTION_START_DATE <- as.Date(data$EXECUTION_START_DATE, format = "%m/%d/%Y")
+data$EXECUTION_FINISH_DATE <- as.Date(data$EXECUTION_FINISH_DATE, format = "%m/%d/%Y")
+
+# Extract year and quarter from EXECUTION_START_DATE
+data$execution_year <- year(data$EXECUTION_START_DATE)
+data$execution_quarter <- quarter(data$EXECUTION_START_DATE)
+```
+
+## Calculate Average Repair Duration and Unplanned Maintenance Proportion 
+
+
+**This step calculates essential entrancement metrics before summarizing the data for quarterly records** 
+
+```{r}
+data_viz <- data %>%
+  group_by(FUNCTIONAL_AREA_NODE_1_MODIFIED, execution_year, execution_quarter) %>%
+  summarize(
+    avg_repair_duration = mean(ACTUAL_WORK_IN_MINUTES, na.rm = TRUE),
+    unplanned_maintenance_prop = mean(MAINTENANCE_ACTIVITY_TYPE == "Unplanned", na.rm = TRUE),
+    records = n()
+  ) %>%
+  ungroup()
+```
+
+# Visualizations 
+
+## Quarterly Breakdwon Counts Over time 
+
+```{r}
+ggplot(data_viz, aes(x = interaction(execution_year, execution_quarter), y = records)) +
+  geom_line(group = 1, color = "blue") +
+  geom_point(color = "blue") +
+  labs(title = "Quarterly Breakdown Counts Over Time",
+       x = "Year-Quarter",
+       y = "Number of Breakdowns") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+The quarterly breakdown count over time shows a consistent pattern of high peaks followed by sharp declines within each year, indicating possible seasonal maintenance needs or cyclical operational demands. The regular pattern suggests that certain quarters may consistently require more maintenance resources, which could guide proactive planning efforts.
+
+
+## Average Repair Duration by Quarter 
+
+```{r}
+avg_work_duration <- data_viz %>%
+  group_by(execution_year, execution_quarter) %>%
+  summarize(avg_duration = mean(avg_repair_duration, na.rm = TRUE))
+
+ggplot(avg_work_duration, aes(x = interaction(execution_year, execution_quarter), y = avg_duration)) +
+  geom_line(group = 1, color = "darkgreen") +
+  geom_point(color = "darkgreen") +
+  labs(title = "Average Repair Duration by Quarter",
+       x = "Year-Quarter",
+       y = "Average Repair Duration (Minutes)") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+
+The average repair duration by quarter is generally stable, averaging around 100 minutes, with occasional fluctuations. A significant spike in 2016 Q3 suggests an unusual event or intensive repair requirement during that period, while other quarters remain fairly consistent.
+
+
+## Breakdown Counts by Quarter for Each Functional Area 
+
+```{r, warning = FALSE, message = FALSE}
+# Find top functional areas based on total breakdowns
+top_areas <- data_viz %>%
+  group_by(FUNCTIONAL_AREA_NODE_1_MODIFIED) %>%
+  summarize(total_breakdowns = sum(records)) %>%
+  arrange(desc(total_breakdowns)) %>%
+  slice_head(n = 5)
+
+# Filter to include only the top areas
+top_data <- data_viz %>%
+  filter(FUNCTIONAL_AREA_NODE_1_MODIFIED %in% top_areas$FUNCTIONAL_AREA_NODE_1_MODIFIED)
+
+# Plot breakdown counts by quarter for top functional areas
+ggplot(top_data, aes(x = interaction(execution_year, execution_quarter), y = records, color = FUNCTIONAL_AREA_NODE_1_MODIFIED)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~ FUNCTIONAL_AREA_NODE_1_MODIFIED, scales = "free_y") +
+  labs(title = "Quarterly Breakdown Counts by Top Functional Areas",
+       x = "Year-Quarter",
+       y = "Number of Breakdowns") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  scale_x_discrete(breaks = function(x) x[seq(1, length(x), by = 4)]) +
+  theme(legend.position = "none")
+
+```
+
+The breakdown counts by quarter show that SUZUKA PRODUCTION consistently has the highest number of breakdowns, indicating it as a high-maintenance area. SILVERSTONE PRODUCTION shows a noticeable upward trend over time, suggesting increasing maintenance needs, while other areas like COTA PRODUCTION and MONZA PRODUCTION display relatively stable breakdown patterns across quarters.
+
+
+## Total Breakdowns by Quarter 
+
+
+```{r, warnings = FALSE}
+# Create data_viz with records column
+data_viz <- data %>%
+  group_by(FUNCTIONAL_AREA_NODE_1_MODIFIED, execution_year, execution_quarter) %>%
+  summarize(
+    avg_repair_duration = mean(ACTUAL_WORK_IN_MINUTES, na.rm = TRUE),
+    unplanned_maintenance_prop = mean(MAINTENANCE_ACTIVITY_TYPE == "Unplanned", na.rm = TRUE),
+    records = n()  # This column counts the number of breakdowns
+  ) %>%
+  ungroup()
+# Summarize data_viz by quarter
+breakdowns_by_quarter <- data_viz %>%
+  group_by(execution_quarter) %>%
+  summarize(total_breakdowns = sum(records))
+
+# Plot total breakdowns by quarter
+ggplot(breakdowns_by_quarter, aes(x = factor(execution_quarter), y = total_breakdowns, fill = factor(execution_quarter))) +
+  geom_bar(stat = "identity") +
+  labs(title = "Total Breakdowns by Quarter",
+       x = "Quarter",
+       y = "Total Number of Breakdowns") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set3", guide = FALSE)
+
+
+```
+
+The bar chart shows the total breakdowns for each quarter across all years, with each quarter having a similar high volume of breakdowns. This indicates that breakdowns are consistently distributed throughout the year, with no quarter standing out as particularly high or low in maintenance demands.
+
+## Heatmap 
+
+```{r}
+# Summarize data_viz by year and quarter
+breakdowns_by_year_quarter <- data_viz %>%
+  group_by(execution_year, execution_quarter) %>%
+  summarize(total_breakdowns = sum(records))
+
+# Plot heatmap by year and quarter
+ggplot(breakdowns_by_year_quarter, aes(x = factor(execution_quarter), y = factor(execution_year), fill = total_breakdowns)) +
+  geom_tile() +
+  labs(title = "Breakdowns by Year and Quarter",
+       x = "Quarter",
+       y = "Year",
+       fill = "Total Breakdowns") +
+  scale_fill_viridis_c(option = "C") +
+  theme_minimal()
+
+```
+
+
+The heatmap shows the total breakdowns by year and quarter, with darker colors representing lower breakdown counts and lighter colors representing higher counts. The pattern reveals consistently high breakdowns in recent years, with notable dips in earlier years like 2016 Q3 and 2017 Q1, indicating potential changes in maintenance needs or operational intensity over time.
+
+## What we learned for marketing
+
+The exploratory analysis of breakdowns by quarter and functional area reveals several key insights that will inform our modeling approach:
+
+  1) Consistent Breakdown Patterns Across Quarters: Total breakdown counts are similar across quarters, indicating no single quarter has a significantly higher breakdown volume. This suggests that seasonality might be less critical for predictive power in our model, but quarterly data can still provide structured temporal insights.
+
+  2) High Maintenance Demand in Certain Functional Areas: Some functional areas, such as SUZUKA PRODUCTION, show consistently high breakdown counts, while others have relatively stable or fluctuating patterns. This highlights the need to incorporate functional area data into the model to capture differences in maintenance demand.
+
+  3) Temporal Trends and Anomalies: The heatmap by year and quarter shows a general trend of increasing breakdowns over time, with certain dips and spikes in earlier years (e.g., 2016 Q3). This implies that the model should account for time-based trends, possibly using lagged features or cumulative breakdown counts to capture evolving maintenance requirements.
+
+  4) Repair Duration Stability with Occasional Spikes: Average repair duration remains fairly stable around 100 minutes, with occasional spikes (notably in 2016 Q3). This stability suggests repair duration might not be a primary predictor but could act as a complementary feature to distinguish between minor and major maintenance events.
+
+**Modeling Considerations**
+
+These observations suggest a model that incorporates functional area, quarterly breakdown trends, and historical breakdowns to capture patterns in maintenance needs. Lagged features (variables that capture past values of a feature at a specific time interval to help predict future outcomes), moving averages (calculated by averaging a set of past values over a specific time window, smoothing out short-term fluctuations to reveal longer-term trends in the data.), and cumulative breakdown totals over the past quarters could enhance predictive power by reflecting both immediate and long-term maintenance demands. This approach will enable the model to identify high-risk periods and allocate resources efficiently across quarters and functional areas.
+
+
+# Model Preparation 
+
+## Structure data 
+
+
+```{r}
+# Extract year and quarter
+data <- data %>%
+  mutate(
+    execution_year = year(EXECUTION_START_DATE),
+    execution_quarter = quarter(EXECUTION_START_DATE)
+  )
+```
+
+## Aggregate by Quarter 
+
+```{r}
+# Summarize data by quarter and functional area
+data_model <- data %>%
+  group_by(FUNCTIONAL_AREA_NODE_1_MODIFIED, execution_year, execution_quarter) %>%
+  summarize(
+    records = n(),
+    avg_repair_duration = mean(ACTUAL_WORK_IN_MINUTES, na.rm = TRUE),
+    unplanned_maintenance_prop = mean(MAINTENANCE_ACTIVITY_TYPE == "Unplanned", na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+```
+
+
+## Create Lagged and Moving Average Featrues  
+
+```{r}
+# Add lagged features and moving averages
+data_model <- data_model %>%
+  arrange(FUNCTIONAL_AREA_NODE_1_MODIFIED, execution_year, execution_quarter) %>%
+  group_by(FUNCTIONAL_AREA_NODE_1_MODIFIED) %>%
+  mutate(
+    breakdowns_last_quarter = lag(records, 1),
+    breakdowns_same_quarter_last_year = lag(records, 4),
+    avg_breakdowns_last_4_quarters = rollmean(records, k = 4, fill = NA, align = "right"),
+    total_breakdowns_last_4_quarters = rollsum(records, k = 4, fill = NA, align = "right")
+  ) %>%
+  ungroup()
+```
+
+## Handle Missing Data 
+
+
+```{r}
+# Handle missing values
+data_model <- data_model %>%
+  mutate(
+    breakdowns_last_quarter = ifelse(is.na(breakdowns_last_quarter), 0, breakdowns_last_quarter),
+    breakdowns_same_quarter_last_year = ifelse(is.na(breakdowns_same_quarter_last_year), 0, breakdowns_same_quarter_last_year),
+    avg_breakdowns_last_4_quarters = ifelse(is.na(avg_breakdowns_last_4_quarters), 0, avg_breakdowns_last_4_quarters),
+    total_breakdowns_last_4_quarters = ifelse(is.na(total_breakdowns_last_4_quarters), 0, total_breakdowns_last_4_quarters)
+  )
+
+```
+
+## Convert Categorical Variables to factors 
+
+```{r}
+# One-hot encode categorical variables if necessary
+data_model <- data_model %>%
+  mutate(FUNCTIONAL_AREA_NODE_1_MODIFIED = as.factor(FUNCTIONAL_AREA_NODE_1_MODIFIED))
+
+```
+
+```{r}
+names(data_model)
+```
+
+
+
+# Modeling 
+
+## Step 1: Dfine Target Features 
+
+```{r}
+# Define the target variable
+target <- "records"
+
+# Define features to include all columns except the target
+features <- setdiff(names(data_model), target)
+
+
+```
+
+
+## Split data into Training and Testing Sets 
+
+
+```{r}
+# Split the data into training and testing sets (70/30 split)
+set.seed(123)
+train_indices <- sample(seq_len(nrow(data_model)), size = 0.7 * nrow(data_model))
+train_data <- data_model[train_indices, c(target, features)]
+test_data <- data_model[-train_indices, c(target, features)]
+
+```
+
+
+## Train Random Forest 
+
+```{r}
+# Train the Random Forest model
+set.seed(123)
+rf_model <- randomForest(
+  as.formula(paste(target, "~ .")), 
+  data = train_data, 
+  ntree = 100,
+  mtry = floor(sqrt(length(features))),
+  importance = TRUE
+)
+# Print basic summary of the model
+print(rf_model)
+
+```
+
+The Random Forest model is a regression model trained with 100 trees, each split using 3 randomly selected features. The Mean of squared residuals (error measure) is 1,411,690, indicating the average squared difference between predicted and actual values. With 98.04% of variance explained, the model fits the data well, capturing nearly all variability in the target variable (records).
+
+
+
+## Evaluate Performance 
+
+
+```{r}
+# Predict on the test data
+predictions <- predict(rf_model, newdata = test_data)
+
+# Calculate performance metrics
+mae <- mean(abs(predictions - test_data$records))
+rmse <- sqrt(mean((predictions - test_data$records)^2))
+r_squared <- cor(predictions, test_data$records)^2
+
+# Print metrics
+cat("Mean Absolute Error (MAE):", mae, "\n")
+cat("Root Mean Squared Error (RMSE):", rmse, "\n")
+cat("R-squared:", r_squared, "\n")
+
+
+```
+
+This model demonstrates strong predictive performance based on the provided metrics.
+breakdown
+
+### MAE 
+
+```{r}
+# Calculate average and median breakdown counts per quarter
+avg_quarterly_count <- mean(data_model$records)
+median_quarterly_count <- median(data_model$records)
+
+cat("Average Quarterly Breakdown Count:", avg_quarterly_count, "\n")
+cat("Median Quarterly Breakdown Count:", median_quarterly_count, "\n")
+# MAE % of average and median counts 
+mae <- 617.5
+mae_percentage_avg <- (mae / avg_quarterly_count) * 100
+mae_percentage_median <- (mae / median_quarterly_count) * 100
+
+cat("MAE as % of Average Quarterly Count:", mae_percentage_avg, "%\n")
+cat("MAE as % of Median Quarterly Count:", mae_percentage_median, "%\n")
+
+```
+
+MAE as a Percentage of the Average Quarterly Count (12.84%): This suggests the model's errors are reasonably low relative to the average breakdown count, indicating good precision for the typical breakdown volume.
+
+MAE as a Percentage of the Median Quarterly Count (48%): This higher percentage shows that while the model performs well on average, it might be less accurate for quarters with lower breakdown counts. This could mean the model is slightly overestimating breakdowns for quarters that experience fewer breakdowns, pulling the MAE up relative to the median.
+
+Overall, with an MAE of around 12.8% of the average quarterly count, the model is quite effective at predicting breakdowns, especially when they are closer to average levels. However, if more precision is needed for lower breakdown quarters, further tuning or a complementary model focusing on those lower counts might improve performance.
+
+
+### RMSE 
+
+```{r}
+rmse <- 1318.3
+
+# Calculate RMSE as a percentage of the average and median quarterly breakdown count
+rmse_percentage_avg <- (rmse / avg_quarterly_count) * 100
+rmse_percentage_median <- (rmse / median_quarterly_count) * 100
+
+cat("RMSE as % of Average Quarterly Count:", rmse_percentage_avg, "%\n")
+cat("RMSE as % of Median Quarterly Count:", rmse_percentage_median, "%\n")
+```
+
+
+- RMSE as a Percentage of Average Quarterly Count (27.4%): This suggests that the model’s larger prediction errors are around a quarter of the average quarterly breakdown count, which is acceptable but might indicate room for improvement, especially if high precision is important for decision-making.
+
+- RMSE as a Percentage of Median Quarterly Count (102.5%): This percentage is high, meaning the model’s larger errors are roughly equivalent to or even greater than typical lower breakdown quarters. This suggests that while the model captures overall patterns well, it tends to overestimate or experience larger deviations for quarters with lower breakdown counts.
+
+In summary, while the model performs reasonably well in general (especially on average-sized quarters), the high RMSE relative to the median count suggests it may struggle with quarters that have fewer breakdowns. If predictions for lower-count quarters are important, additional tuning or adjustments to the model may improve its accuracy.
+
+### Feature Importance 
+
+```{r}
+# Feature importance
+importance_visual <- importance(rf_model)
+importance_visual
+feature_importance <- varImpPlot(rf_model, main = "Feature Importance")
+feature_importance 
+
+```
+
+## Model 2 
+
+### Log Transformation 
+
+```{r}
+# Create a separate copy for the new model transformations
+data_model_transformed <- data_model
+
+# Apply transformations on the new copy
+data_model_transformed$log_records <- log1p(data_model_transformed$records)  # log1p handles zero values safely
+
+```
+
+
+### Interaction term 
+
+
+```{r}
+data_model_transformed$interaction_repair_unplanned <- data_model_transformed$avg_repair_duration * data_model_transformed$unplanned_maintenance_prop
+
+```
+### Polynomial 
+
+```{r}
+data_model_transformed$breakdowns_last_quarter_squared <- data_model_transformed$breakdowns_last_quarter^2 
+```
+
+## features 
+
+```{r}
+# Define the new target variable and feature set
+new_target <- "log_records"
+new_features <- c(
+  "FUNCTIONAL_AREA_NODE_1_MODIFIED", "avg_repair_duration", "unplanned_maintenance_prop",
+  "breakdowns_last_quarter", "breakdowns_same_quarter_last_year",
+  "avg_breakdowns_last_4_quarters", "total_breakdowns_last_4_quarters",
+  "interaction_repair_unplanned", "breakdowns_last_quarter_squared"
+)
+
+
+```
+
+## Split Data 
+
+```{r}
+# Split the transformed data into training and testing sets (70/30 split)
+set.seed(123)
+train_indices <- sample(seq_len(nrow(data_model_transformed)), size = 0.7 * nrow(data_model_transformed))
+train_data_new <- data_model_transformed[train_indices, c(new_target, new_features)]
+test_data_new <- data_model_transformed[-train_indices, c(new_target, new_features)]
+
+```
+
+### Models 
+
+```{r}
+# Train the rf model with the new target and features
+set.seed(123)
+rf_model_new <- randomForest(
+  as.formula(paste(new_target, "~ .")), 
+  data = train_data_new, 
+  ntree = 100,                       
+  mtry = floor(sqrt(length(new_features))),  
+  importance = TRUE                 
+)
+```
+
+### Predictions 
+
+
+```{r}
+# Predict on the test set
+log_predictions <- predict(rf_model_new, newdata = test_data_new)
+
+# Transform predictions back to original scale
+predictions <- expm1(log_predictions)  
+
+```
+
+
+
+### Performance 
+
+```{r}
+# Reconfirm test indices
+test_indices <- setdiff(seq_len(nrow(data_model_transformed)), train_indices)
+
+# Extract records from the original dataset for these indices
+original_records <- data_model$records[test_indices]
+
+# Double-check lengths
+cat("Length of predictions:", length(predictions), "\n")
+cat("Length of original_records:", length(original_records), "\n")
+
+```
+
+
+```{r, warnings = FALSE, messages = FALSE}
+# Calculate performance metrics on the original scale
+mae_new <- mean(abs(predictions - original_records))
+rmse_new <- sqrt(mean((predictions - original_records)^2))
+r_squared_new <- cor(predictions, original_records)^2
+
+# Print the results
+cat("New Model Mean Absolute Error (MAE):", mae_new, "\n")
+cat("New Model Root Mean Squared Error (RMSE):", rmse_new, "\n")
+cat("New Model R-squared:", r_squared_new, "\n")
+
+
+```
+
+### MAE 
+
+```{r}
+# Calculate MAE percentage for the new model
+mae_percentage_avg_new <- (mae_new / avg_quarterly_count) * 100
+mae_percentage_median_new <- (mae_new / median_quarterly_count) * 100
+
+# Print results
+cat("New Model MAE as % of Average Quarterly Count:", mae_percentage_avg_new, "%\n")
+cat("New Model MAE as % of Median Quarterly Count:", mae_percentage_median_new, "%\n")
+```
+
+The new model’s Mean Absolute Error (MAE) is approximately 15.6% of the average quarterly breakdown count and 58.3% of the median quarterly breakdown count. This indicates that while the model performs reasonably well on average, its errors are relatively high for quarters with fewer breakdowns, suggesting it still may struggle with accurately predicting low-count quarters.
+
+
+## Feature Importance 
+
+```{r}
+# Calculate feature importance
+importance_values <- importance(rf_model_new)
+
+# Print the importance values
+print(importance_values)
+
+# Plot feature importance
+varImpPlot(rf_model_new, main = "Feature Importance for New Random Forest Model", 
+           n.var = min(10, nrow(importance(rf_model_new))),   # Show top 10 features if too many
+           cex = 0.7,                                        # Adjust text size if needed
+           las = 2)                                          # Make y-axis labels vertical
+
+```
+The Feature Importance Plot from the Random Forest model shows which variables have the most influence on predicting quarterly breakdown counts.
+
+Top Features:
+
+breakdowns_last_quarter and breakdowns_last_quarter_squared: These variables are the most important, indicating that recent breakdown counts (especially the previous quarter) have a strong predictive impact on future breakdowns.
+FUNCTIONAL_AREA_NODE_1_MODIFIED: This feature, which likely represents the functional area or department, is also highly influential. This suggests that the likelihood of breakdowns varies significantly across different functional areas.
+Other Influential Features:
+
+avg_breakdowns_last_4_quarters and total_breakdowns_last_4_quarters: These features, representing breakdown patterns over the last year, also contribute to the prediction. They show that past trends over several quarters help in forecasting future breakdowns.
+unplanned_maintenance_prop: The proportion of unplanned maintenance events affects breakdown counts, implying that areas with more unplanned maintenance events are more likely to experience breakdowns.
+Less Impactful Features:
+
+Features like avg_repair_duration and breakdowns_same_quarter_last_year have lower importance. While they provide some predictive value, they are not as influential as the more recent breakdown history or functional area.
+In summary, the model emphasizes recent breakdown counts and functional area as the strongest indicators for predicting quarterly breakdown counts. This insight can guide maintenance scheduling by prioritizing areas with high recent breakdown counts and tailoring strategies for different functional areas.
+
+## Feature Importance By Quarter 
+
+### Loop and train 
+
+```{r}
+# Loop over each quarter, train a model, and capture feature importance
+quarterly_importance <- list()
+
+for (q in 1:4) {
+  # Filter data for each quarter
+  data_q <- data_model_transformed %>% filter(execution_quarter == q)
+  
+  # Train a Random Forest model on the data for this quarter
+  rf_q <- randomForest(
+    as.formula(paste(new_target, "~ .")), 
+    data = data_q, 
+    ntree = 100,
+    mtry = floor(sqrt(length(new_features))),
+    importance = TRUE
+  )
+  
+  # Get feature importance and store it with quarter information
+  importance_q <- as.data.frame(importance(rf_q))
+  importance_q$Feature <- rownames(importance_q)
+  importance_q$Quarter <- q  
+  
+  quarterly_importance[[q]] <- importance_q
+}
+
+# Combine importance data for all quarters
+quarterly_importance_df <- do.call(rbind, quarterly_importance)
+
+# Convert Quarter to a factor to make it a discrete variable for plotting
+quarterly_importance_df$Quarter <- as.factor(quarterly_importance_df$Quarter)
+
+# Filter out the target variable 'records' from the importance data frame, if present
+quarterly_importance_df <- quarterly_importance_df %>%
+  filter(Feature != "records")
+
+# Calculate the average importance of each feature across quarters
+avg_importance <- quarterly_importance_df %>%
+  group_by(Feature) %>%
+  summarize(mean_importance = mean(`%IncMSE`, na.rm = TRUE))
+
+# Merge back to order by mean importance and reorder features
+quarterly_importance_df <- quarterly_importance_df %>%
+  left_join(avg_importance, by = "Feature") %>%
+  mutate(Feature = reorder(Feature, -mean_importance))  
+
+```
+
+```{r}
+# Create the plot with facet_wrap for each quarter
+ggplot(quarterly_importance_df, aes(x = reorder(Feature, `%IncMSE`), y = `%IncMSE`, fill = as.factor(Quarter))) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  coord_flip() +
+  labs(
+    title = "Feature Importance by Quarter",
+    x = "Feature",
+    y = "% Increase in MSE",
+    fill = "Quarter"
+  ) +
+  facet_wrap(~ Quarter, ncol = 2) +  # Facet by Quarter with 2 columns
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set3") +
+  theme(
+    axis.text.y = element_text(size = 10, hjust = 1),
+    axis.text.x = element_text(size = 10),
+    legend.position = "none",
+    panel.grid.major.x = element_line(color = "grey", size = 0.2)
+  )
+
+```
+### Data Dictionary to clarify importance 
+```{r}
+
+# Create a data frame for the data dictionary
+data_dictionary <- data.frame(
+  Feature = c(
+    "FUNCTIONAL_AREA_NODE_1_MODIFIED", "breakdowns_last_quarter_squared", "breakdowns_last_quarter", 
+    "total_breakdowns_last_4_quarters", "avg_breakdowns_last_4_quarters", "unplanned_maintenance_prop", 
+    "interaction_repair_unplanned", "breakdowns_same_quarter_last_year", "avg_repair_duration", 
+    "execution_quarter", "execution_year", "records"
+  ),
+  Description = c(
+    "Primary functional area where the breakdowns are recorded, representing different production areas.",
+    "Square of the breakdown count from the previous quarter, highlighting recent significant changes in breakdowns.",
+    "Breakdown count from the previous quarter, capturing immediate past performance for trend analysis.",
+    "Cumulative breakdowns over the last four quarters, providing insight into yearly maintenance trends.",
+    "Average breakdowns over the last four quarters, giving a smoother view of the breakdown pattern per year.",
+    "Proportion of maintenance events that were unplanned, indicating responsiveness or unexpected failures.",
+    "Interaction term capturing relationship between average repair duration and unplanned maintenance proportion.",
+    "Breakdown count in the same quarter of the previous year, indicating seasonal or cyclical patterns.",
+    "Average duration of repair in minutes, showing the effort or complexity involved in resolving breakdowns.",
+    "Quarter of execution (1 to 4), indicating seasonality and temporal patterns in breakdown occurrences.",
+    "Year of execution, providing a timeline for tracking changes and improvements over time.",
+    "Target variable representing the count of breakdowns for each quarter in each functional area, serving as the primary output for predictive modeling."
+  )
+)
+
+# Display the table using knitr::kable for a clean look in R Markdown
+kable(data_dictionary, caption = "Data Dictionary for Model Features")
+
+
+
+```
+
+
+
+**Interpretation** 
+
+
+*Top Features Consistent Across Quarters:* The features FUNCTIONAL_AREA_NODE_1_MODIFIED, breakdowns_last_quarter_squared, and breakdowns_last_quarter consistently show high importance across all quarters, indicating that historical breakdown data and the specific functional area are strong predictors of future breakdowns.
+
+*Seasonal Variation in Importance:* Some features show fluctuating importance across quarters. For instance, unplanned_maintenance_prop is more important in Q1 and Q4, while interaction_repair_unplanned varies throughout the year. This suggests that certain maintenance patterns or reactive behaviors impact breakdowns differently depending on the time of year.
+
+*Lower Importance of Time-Based Features:* execution_year and execution_quarter show low importance across all quarters, indicating that breakdown patterns are not directly tied to the specific year or quarter. This suggests that seasonal trends alone do not fully explain the variation in breakdowns.
+
+**Relevance to Stakeholders** 
+For stakeholders, the model demonstrates that:
+
+*Historical Data Drives Predictions:* The most influential features relate to past breakdowns, supporting a proactive maintenance approach. Knowing that breakdowns in the last quarter are highly predictive of current issues may encourage regular, data-informed check-ups.
+
+*Functional Area Significance:* The functional area of equipment is consistently crucial, suggesting that breakdown likelihood varies significantly by area. This insight can guide resource allocation to high-risk areas.
+
+*Quarter-Specific Maintenance Strategy:* With some features showing seasonal shifts, stakeholders may adopt flexible maintenance practices that align with quarterly variations. For example, increased focus on unplanned maintenance in Q1 and Q4 could reduce unexpected breakdowns.
+
+
+**Overall Value** 
+
+While this visualization reinforces the predictive power of certain features, it provides limited actionable insights specifically tied to quarters. To enhance its value, stakeholders might focus on quarterly maintenance planning for high-risk areas based on this model’s insights. However, if a more nuanced understanding of seasonal trends is required, additional analysis or a deeper focus on quarterly-specific models might be beneficial.
+
+
+
+
