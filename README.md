@@ -14,18 +14,26 @@ Swire Coca-Cola's production plants operate six facilities that produce approxim
 - A final report detailing findings and recommendations.
 
 
-## Groups Solution to the Business Problem 
+## [Group Modeling Assignment](Group%20Modeling%20Assignment.html)
 
-Our group developed a multi-faceted predictive maintenance solution for Swire Coca-Cola, leveraging key analytics techniques:
+OOur group developed a comprehensive predictive maintenance solution for Swire Coca-Cola to address unplanned downtimes and improve production efficiency. Leveraging advanced analytics techniques, we implemented the following models:
 
 1. **Survival Analysis (Main Focus)**:
-   - Estimated the likelihood of machinery failures over time.
-   - Provided actionable insights into expected failure timelines, enabling better maintenance scheduling.
+   - Applied survival analysis to estimate the likelihood of machinery failures over time.
+   - Provided actionable insights into expected failure timelines, allowing maintenance teams to proactively schedule repairs before breakdowns occurred.
+   - Enabled better resource allocation and minimized unexpected production disruptions.
 
 2. **Random Forest Model**:
-   - Identified key features influencing machine breakdowns, such as component wear and machine age.
+   - Used a Random Forest algorithm to identify and rank the key factors driving machine breakdowns, such as component wear, machine age, and environmental conditions.
+   - Highlighted critical variables to guide targeted maintenance interventions and resource prioritization.
 
 3. **Logistic Regression**:
-   - Predicted the probability of equipment failures under specific conditions.
+   - Built a logistic regression model to predict the probability of equipment failures under specific operating conditions.
+   - Delivered a straightforward and interpretable model for decision-makers, offering additional layers of insight for maintenance planning.
 
-These approaches collectively enabled Swire Coca-Cola to anticipate failures, reduce downtime, and optimize maintenance schedules for increased production efficiency.
+These approaches worked synergistically to empower Swire Coca-Cola with data-driven strategies to anticipate equipment failures, reduce downtime, optimize maintenance schedules, and enhance overall production efficiency. The solution is projected to significantly reduce operational costs and improve productivity by addressing the root causes of unplanned downtimes.
+
+
+## My Contribution to the Project 
+
+
